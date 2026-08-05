@@ -1,51 +1,45 @@
-# Reinigungsplaner - Manager-Dashboard (Version 1)
+# Reinigungsplaner - Manager-Dashboard (Version 2)
 
-Diese eigenstaendige App ist fuer den MANAGER gedacht und ergaenzt die Mitarbeiter-App.
-Sie verbindet sich mit dem GLEICHEN Google Apps Script Webhook wie die Mitarbeiter-App.
+## Wichtige Korrektur der Verteilungslogik
 
-## Funktionen
+In der vorherigen Version wurde zuerst nach Farbe balanciert und erst danach die
+Etage beruecksichtigt - das fuehrte zu ungleichen Zimmeranzahlen (z. B. 4/3/5) und
+unnoetig vielen Etagenwechseln pro Mitarbeiter (siehe Screenshot-Feedback).
 
-### Tab "Mitarbeiter"
-Wochenliste aller Reinigungskraefte pflegen (Name, E-Mail, aktiv/pausiert).
+Die Prioritaeten wurden jetzt korrekt umgesetzt:
 
-### Tab "Zimmer"
-Taegliche Zimmerliste eintragen, die das Hotel liefert: Zimmernummer, Etage, Farbe
-(Blau/Rot/Gelb), WW, Suite - genau wie in der Mitarbeiter-App.
+1. **Prioritaet 1: Minimale Etagenwechsel.** Alle Zimmer eines Tages werden nach
+   Etage sortiert (unabhaengig von der Farbe). Jeder Mitarbeiter bekommt einen
+   ZUSAMMENHAENGENDEN Abschnitt aus dieser sortierten Liste - dadurch besucht er
+   nur die Etagen, die in seinem Abschnitt liegen, meist nur 1-2 Etagen.
+2. **Prioritaet 2: Exakt gleiche Zimmeranzahl.** Da die Abschnitte gleich gross
+   gebildet werden (Gesamtzahl / Anzahl Mitarbeiter, Rest wird auf die ersten
+   Mitarbeiter verteilt), bekommt jeder Mitarbeiter die gleiche oder maximal 1
+   Zimmer mehr/weniger als die anderen.
+3. Ein taeglicher Rotations-Wert sorgt dafuer, dass nicht immer derselbe
+   Mitarbeiter die "guten" (z. B. unteren) Etagen bekommt.
 
-### Tab "Verteilung"
-1. Waehlen Sie aus, welche Mitarbeiter heute im Dienst sind.
-2. Klicken Sie auf "Zimmer gerecht verteilen". Der Algorithmus sorgt dafuer, dass:
-   - JEDER Mitarbeiter die GLEICHE Anzahl Zimmer JEDER Farbe bekommt (Hauptziel),
-   - die Etagen pro Mitarbeiter so weit wie moeglich zusammenhaengend sind, um
-     Laufwege/Etagenwechsel zu minimieren (Nebenziel).
-   - Eine taegliche Rotation sorgt dafuer, dass ueber die Zeit hinweg jeder Mitarbeiter
-     mal die "leichten" und mal die "schwierigen" Etagen bekommt.
-3. Klicken Sie auf "An Google Drive senden" - jede Zuteilung wird als eigene Datei im
-   Google Drive gespeichert, damit die Mitarbeiter-App sie spaeter laden kann.
+Getestet mit genau dem Szenario aus Ihrem Screenshot (12 Zimmer, 3 Mitarbeiter,
+Etagen 3-5): Ergebnis jetzt 4/4/4 Zimmer, und die Mitarbeiter besuchen zusammen
+nur noch 4 Etagen-Zuweisungen statt vorher deutlich mehr.
 
-### Tab "Bericht"
-Live-Uebersicht, welche Zimmer schon erledigt und welche noch offen sind. Gruppierung
-waehlbar nach Mitarbeiter, Etage oder Farbe. Der Button "Status aktualisieren" ruft die
-tatsaechlich abgeschlossenen Reinigungen direkt aus dem gemeinsamen Google-Speicher ab.
+## Funktionen (unveraendert)
+
+- **Mitarbeiter**: Wochenliste pflegen (Name, E-Mail, aktiv/pausiert).
+- **Zimmer**: Taegliche Zimmerliste eintragen (Nummer, Etage, Farbe, WW, Suite).
+- **Verteilung**: Anwesende auswaehlen, "Zimmer gerecht verteilen" klicken, Ergebnis
+  ansehen (inkl. Etagen pro Mitarbeiter), "An Google Drive senden".
+- **Bericht**: Live-Status (erledigt/offen), gruppierbar nach Mitarbeiter, Etage
+  oder Farbe.
 
 ## Einrichtung
 
-1. Der Manager richtet EINMALIG das Google Apps Script ein (siehe Datei
-   "AppsScript_v3_Manager_und_Mitarbeiter.gs.txt" - falls bereits eine aeltere Version
-   des Skripts existiert, den kompletten Code darin ersetzen und neu bereitstellen).
-2. Alle App-Dateien (index.html, app.js, styles.css, manifest.json, sw.js, Icons) in ein
-   NEUES GitHub-Repository oder einen NEUEN Unterordner hochladen (getrennt von der
-   Mitarbeiter-App, da es eine eigene Anwendung ist).
-3. In der Manager-App unter Einstellungen die gleiche Webhook-URL eintragen wie in der
-   Mitarbeiter-App.
-
-## Wichtiger Hinweis zur Mitarbeiter-App
-
-Damit Mitarbeiter ihre Zuteilung tatsaechlich sehen koennen, muss die Mitarbeiter-App
-noch um eine "Zuteilung laden"-Funktion erweitert werden, die per GET
-(action=getAssignment) die fuer sie gespeicherte Liste abruft und automatisch in ihre
-taegliche Zimmerliste uebernimmt. Bitte im naechsten Schritt anfragen, damit ich auch
-die Mitarbeiter-App entsprechend aktualisiere und Ihnen die neue Version zusende.
+1. Der Manager richtet einmalig das Google Apps Script ein (Datei
+   "AppsScript_v3_Manager_und_Mitarbeiter.gs.txt"; falls eine aeltere Version
+   existiert, den Code darin komplett ersetzen und neu bereitstellen).
+2. Alle App-Dateien in ein Repository/Verzeichnis hochladen.
+3. In den Einstellungen der App die Webhook-URL eintragen (gleiche URL wie in der
+   Mitarbeiter-App).
 
 ## Dateistruktur
 

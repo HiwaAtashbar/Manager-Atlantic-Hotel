@@ -65,10 +65,17 @@ function showToast(msg) {
 }
 
 /* ============================================================
-   Fair distribution algorithm
-   Priority 1: equal room count per color per employee.
-   Priority 2: minimize floor-switching (contiguous floor blocks per color).
-   A daily rotation seed keeps "who gets the easy floors" fair across days.
+   Faire Verteilung – Version 2
+   PRIORITAET 1: minimale Etagenwechsel pro Mitarbeiter.
+   PRIORITAET 2: exakt gleiche (oder max. 1 Zimmer Unterschied) Gesamtanzahl
+                 Zimmer pro Mitarbeiter.
+   Methode: Alle Zimmer werden nach Etage sortiert (unabhaengig von der
+   Farbe) und in N zusammenhaengende Bloecke gleicher Groesse aufgeteilt.
+   Dadurch bekommt jeder Mitarbeiter einen zusammenhaengenden Etagen-
+   bereich (minimale Laufwege) UND exakt die gleiche Zimmeranzahl.
+   Ein taeglicher Rotations-Wert sorgt dafuer, dass ueber die Zeit hinweg
+   jeder Mitarbeiter mal die "leichten" und mal die "schwierigen" Etagen
+   bekommt.
    ============================================================ */
 function distributeRooms(rooms, employeeIds, rotateSeed) {
   const n = employeeIds.length;
@@ -76,29 +83,22 @@ function distributeRooms(rooms, employeeIds, rotateSeed) {
   employeeIds.forEach(id => assignment[id] = []);
   if (n === 0) return assignment;
 
-  const byColor = {};
-  rooms.forEach(r => {
-    if (!byColor[r.color]) byColor[r.color] = [];
-    byColor[r.color].push(r);
+  const sortedRooms = [...rooms].sort((a, b) => {
+    if (a.floor !== b.floor) return a.floor - b.floor;
+    return a.number.localeCompare(b.number, "de", { numeric: true });
   });
+
+  const total = sortedRooms.length;
+  const base = Math.floor(total / n);
+  const rem = total % n;
 
   const order = employeeIds.map((_, i) => employeeIds[(i + rotateSeed) % n]);
 
-  Object.keys(byColor).forEach(color => {
-    const colorRooms = [...byColor[color]].sort((a, b) => {
-      if (a.floor !== b.floor) return a.floor - b.floor;
-      return a.number.localeCompare(b.number, "de", { numeric: true });
-    });
-    const total = colorRooms.length;
-    const base = Math.floor(total / n);
-    const rem = total % n;
-    let idx = 0;
-    order.forEach((empId, i) => {
-      const count = base + (i < rem ? 1 : 0);
-      const chunk = colorRooms.slice(idx, idx + count);
-      idx += count;
-      assignment[empId].push(...chunk);
-    });
+  let idx = 0;
+  order.forEach((empId, i) => {
+    const count = base + (i < rem ? 1 : 0);
+    assignment[empId] = sortedRooms.slice(idx, idx + count);
+    idx += count;
   });
 
   return assignment;
@@ -294,12 +294,14 @@ function renderDistributeTab() {
       const emp = staff.find(s => s.id === empId);
       const empRooms = existing.assignment[empId];
       const chips = empRooms.map(r => `<span class="room-chip" style="background:${STATUS_CONFIG[r.color].color}22;color:${STATUS_CONFIG[r.color].color};">${r.number}</span>`).join("");
+      const floorsTouched = [...new Set(empRooms.map(r => r.floor))].sort((a,b)=>a-b);
       const colorCounts = {};
       empRooms.forEach(r => colorCounts[r.color] = (colorCounts[r.color] || 0) + 1);
       const summary = STATUS_ORDER.map(c => `${STATUS_CONFIG[c].short}: ${colorCounts[c] || 0}`).join(" · ");
       return `
         <div class="employee-assign-card">
           <h4>${emp ? emp.name : "Unbekannt"} — ${empRooms.length} Zimmer</h4>
+          <div class="muted" style="margin-bottom:2px;">Etagen: ${floorsTouched.join(", ")}</div>
           <div class="muted" style="margin-bottom:6px;">${summary}</div>
           <div>${chips}</div>
         </div>
