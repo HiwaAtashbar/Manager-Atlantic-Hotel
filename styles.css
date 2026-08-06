@@ -1,18 +1,8 @@
 :root {
-  --blue: #2563eb;
-  --red: #dc2626;
-  --yellow: #ca8a04;
-  --yellow-bg: #fef9c3;
-  --blue-bg: #dbeafe;
-  --red-bg: #fee2e2;
-  --purple: #7c3aed;
-  --green: #16a34a;
-  --navy: #1e3a8a;
-  --bg: #f4f5f7;
-  --card-bg: #ffffff;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --radius: 14px;
+  --blue: #2563eb; --red: #dc2626; --yellow: #ca8a04;
+  --yellow-bg: #fef9c3; --blue-bg: #dbeafe; --red-bg: #fee2e2;
+  --purple: #7c3aed; --green: #16a34a; --navy: #1e3a8a;
+  --bg: #f4f5f7; --card-bg: #ffffff; --text: #1f2937; --muted: #6b7280; --radius: 14px;
 }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding-bottom: 70px; }
@@ -45,6 +35,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
 .modal-box input[type="text"], .modal-box input[type="number"], .modal-box input[type="email"], .modal-box select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; margin-top: 4px; font-size: 14px; }
 .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
 .checkbox-label input { width: auto; }
+.dnd-row { background: #fef2f2; border-radius: 8px; padding: 8px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 .modal-actions.column { flex-direction: column; }
 .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 10px; background: #f9fafb; margin-bottom: 8px; }
@@ -54,9 +45,11 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
 .status-red { border-left: 5px solid var(--red); background: var(--red-bg); }
 .status-yellow { border-left: 5px solid var(--yellow); background: var(--yellow-bg); }
 .room-item { padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+.room-item.room-dnd { opacity: 0.7; border-left-color: #991b1b; }
 .room-item .room-num { font-weight: 700; font-size: 16px; }
 .room-item .room-meta { font-size: 12px; color: var(--muted); }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: rgba(0,0,0,0.08); margin-left: 4px; }
+.badge.dnd { background: #991b1b; color: #fff; }
 .select-group { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .select-group button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff; font-size: 13px; cursor: pointer; }
 .select-group button.active { background: var(--navy); color: #fff; border-color: var(--navy); }

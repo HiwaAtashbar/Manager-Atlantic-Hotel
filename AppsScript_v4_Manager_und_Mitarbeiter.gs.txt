@@ -1,0 +1,155 @@
+/**
+ * Reinigungsplaner - Zentraler Google Apps Script Webhook (Version 4)
+ * NEU: Unterstuetzung fuer "Bitte nicht stören" (rote Karte).
+ * type="dndUpdate" (POST) speichert Zimmernummern; action=getDnd (GET)
+ * liefert sie zurueck, damit die Mitarbeiter-App sie automatisch aus
+ * ihrer Liste entfernen kann.
+ *
+ * AKTUALISIERUNG: script.google.com -> Projekt oeffnen -> alten Code
+ * ersetzen -> speichern -> Bereitstellen -> Bereitstellungen verwalten
+ * -> Stift -> Neue Version -> Bereitstellen. URL bleibt gleich.
+ */
+const REPORTS_FOLDER_NAME = "Reinigungsplaner-Berichte";
+const ASSIGNMENTS_FOLDER_NAME = "Reinigungsplaner-Zuteilungen";
+const CSV_FILE_NAME = "Alle_Berichte.csv";
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const type = data.type || "roomReport";
+    if (type === "assignment") handleAssignment(data);
+    else if (type === "dndUpdate") handleDndUpdate(data);
+    else handleRoomReport(data);
+    return ContentService.createTextOutput(JSON.stringify({status:"ok"})).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({status:"error", message: err.message})).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    const action = e.parameter.action || "ping";
+    if (action === "ping") return jsonOutput({status:"ok"});
+    if (action === "getReports") return jsonOutput(readReportsForDate(e.parameter.date));
+    if (action === "getAssignment") return jsonOutput(readAssignment(e.parameter.date, e.parameter.employeeName) || {rooms:[]});
+    if (action === "getDnd") return jsonOutput(readDndForDate(e.parameter.date));
+    return jsonOutput({status:"error", message:"Unbekannte Aktion"});
+  } catch (err) {
+    return jsonOutput({status:"error", message: err.message});
+  }
+}
+
+function jsonOutput(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+
+function handleRoomReport(data) {
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME);
+  const fileName = data.fileName || ("Bericht_" + new Date().getTime() + ".txt");
+  folder.createFile(fileName, data.reportText || JSON.stringify(data), MimeType.PLAIN_TEXT);
+  appendToCsv(folder, data);
+  appendToDailyJson(folder, data);
+  sendEmailIfRequested(data);
+}
+
+function getOrCreateFolder(name) {
+  const folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(name);
+}
+
+function appendToCsv(folder, data) {
+  const files = folder.getFilesByName(CSV_FILE_NAME);
+  let file, content;
+  const row = [
+    data.date||"", data.employeeName||"", data.recipientEmail||"", data.roomNumber||"", data.status||"",
+    data.ww?"Ja":"Nein", data.isSuite?"Ja":"Nein",
+    data.startTime?new Date(data.startTime).toLocaleString("de-DE"):"",
+    data.endTime?new Date(data.endTime).toLocaleString("de-DE"):"",
+    data.durationMs?Math.round(data.durationMs/60000)+" Min":"",
+    data.wage!=null?data.wage.toFixed(2)+" EUR":"",
+    new Date().toLocaleString("de-DE")
+  ].map(v => '"' + String(v).replace(/"/g,'""') + '"').join(",");
+  if (files.hasNext()) { file = files.next(); content = file.getBlob().getDataAsString("UTF-8") + "\n" + row; file.setContent(content); }
+  else {
+    const header = ["Datum","Mitarbeiter","Empfaenger-Email","Zimmer","Status","WW","Suite","Start","Ende","Dauer","Lohn","Empfangen am"].map(v=>'"'+v+'"').join(",");
+    content = header + "\n" + row;
+    folder.createFile(CSV_FILE_NAME, content, MimeType.CSV);
+  }
+}
+
+function appendToDailyJson(folder, data) {
+  const date = data.date || new Date().toISOString().slice(0,10);
+  const fileName = "Reports_" + date + ".json";
+  const files = folder.getFilesByName(fileName);
+  let list = []; let file = null;
+  if (files.hasNext()) {
+    file = files.next();
+    try { list = JSON.parse(file.getBlob().getDataAsString("UTF-8")); if (!Array.isArray(list)) list = []; } catch(e) { list = []; }
+  }
+  list.push({
+    employeeName: data.employeeName||"", roomNumber: data.roomNumber||"", status: data.status||"",
+    ww: !!data.ww, isSuite: !!data.isSuite, startTime: data.startTime||null, endTime: data.endTime||null,
+    durationMs: data.durationMs||null, wage: data.wage||0, receivedAt: new Date().getTime()
+  });
+  const content = JSON.stringify(list);
+  if (file) file.setContent(content); else folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+}
+
+function readReportsForDate(date) {
+  if (!date) return [];
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME);
+  const files = folder.getFilesByName("Reports_" + date + ".json");
+  if (!files.hasNext()) return [];
+  try { const list = JSON.parse(files.next().getBlob().getDataAsString("UTF-8")); return Array.isArray(list)?list:[]; }
+  catch(e) { return []; }
+}
+
+function sendEmailIfRequested(data) {
+  const raw = (data.recipientEmail||"").trim(); if (!raw) return;
+  const addresses = raw.split(",").map(a=>a.trim()).filter(a=>a.length>0); if (addresses.length===0) return;
+  const subject = "Reinigungsplaner - Zimmer " + (data.roomNumber||"?") + " (" + (data.employeeName||"Mitarbeiter") + ")";
+  const body = data.reportText || JSON.stringify(data, null, 2);
+  addresses.forEach(addr => { try { MailApp.sendEmail(addr, subject, body); } catch(err) {} });
+}
+
+function handleAssignment(data) {
+  const folder = getOrCreateFolder(ASSIGNMENTS_FOLDER_NAME);
+  const date = data.date; const employeeName = data.employeeName || "Unbekannt";
+  const fileName = "Zuteilung_" + date + "_" + employeeName.replace(/\s+/g,"_") + ".json";
+  const content = JSON.stringify({ date, employeeName, employeeEmail: data.employeeEmail||"", rooms: data.rooms||[], createdAt: new Date().getTime() });
+  const files = folder.getFilesByName(fileName);
+  if (files.hasNext()) files.next().setContent(content); else folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+}
+
+function readAssignment(date, employeeName) {
+  if (!date || !employeeName) return null;
+  const folder = getOrCreateFolder(ASSIGNMENTS_FOLDER_NAME);
+  const fileName = "Zuteilung_" + date + "_" + employeeName.replace(/\s+/g,"_") + ".json";
+  const files = folder.getFilesByName(fileName);
+  if (!files.hasNext()) return null;
+  try { return JSON.parse(files.next().getBlob().getDataAsString("UTF-8")); } catch(e) { return null; }
+}
+
+function handleDndUpdate(data) {
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME);
+  const date = data.date; if (!date) return;
+  const fileName = "DND_" + date + ".json";
+  const content = JSON.stringify(Array.isArray(data.roomNumbers) ? data.roomNumbers : []);
+  const files = folder.getFilesByName(fileName);
+  if (files.hasNext()) files.next().setContent(content); else folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+}
+
+function readDndForDate(date) {
+  if (!date) return [];
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME);
+  const files = folder.getFilesByName("DND_" + date + ".json");
+  if (!files.hasNext()) return [];
+  try { const list = JSON.parse(files.next().getBlob().getDataAsString("UTF-8")); return Array.isArray(list)?list:[]; }
+  catch(e) { return []; }
+}
+
+function testSetup() {
+  const f1 = getOrCreateFolder(REPORTS_FOLDER_NAME);
+  const f2 = getOrCreateFolder(ASSIGNMENTS_FOLDER_NAME);
+  Logger.log("Berichte-Ordner: " + f1.getUrl());
+  Logger.log("Zuteilungen-Ordner: " + f2.getUrl());
+}

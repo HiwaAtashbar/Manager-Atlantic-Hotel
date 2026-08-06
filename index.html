@@ -11,33 +11,26 @@
 </head>
 <body>
 <div id="app">
-
   <header class="topbar">
     <h1>Manager-Dashboard</h1>
     <div class="topbar-actions">
       <button id="btnSettings" class="icon-btn" title="Einstellungen">⚙️</button>
     </div>
   </header>
-
   <div class="date-nav">
     <button id="btnPrevDay" class="nav-btn">◀</button>
     <div class="date-label" id="currentDateLabel">Heute</div>
     <button id="btnNextDay" class="nav-btn">▶</button>
     <button id="btnToday" class="btn small">Heute</button>
   </div>
-
   <div id="tabContent"></div>
-
   <nav class="tabbar">
     <button class="tab-btn active" data-tab="staff">Mitarbeiter</button>
     <button class="tab-btn" data-tab="rooms">Zimmer</button>
     <button class="tab-btn" data-tab="distribute">Verteilung</button>
     <button class="tab-btn" data-tab="report">Bericht</button>
   </nav>
-
   <div id="toast" class="toast hidden"></div>
-
-  <!-- Staff Modal -->
   <div id="staffModal" class="modal hidden">
     <div class="modal-box">
       <h3 id="staffModalTitle">Mitarbeiter hinzufügen</h3>
@@ -58,8 +51,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Room Modal -->
   <div id="roomModal" class="modal hidden">
     <div class="modal-box">
       <h3 id="roomModalTitle">Zimmer hinzufügen</h3>
@@ -84,6 +75,10 @@
         <input type="checkbox" id="inputIsSuite">
         Doppelzimmer-Suite
       </label>
+      <label class="checkbox-label dnd-row hidden" id="dndRow">
+        <input type="checkbox" id="inputDnd">
+        🔴 Bitte-nicht-stören-Karte hängt an der Tür
+      </label>
       <div class="modal-actions">
         <button id="btnDeleteRoom" class="btn danger hidden">Löschen</button>
         <button id="btnCancelRoom" class="btn secondary">Abbrechen</button>
@@ -91,8 +86,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Settings Modal -->
   <div id="settingsModal" class="modal hidden">
     <div class="modal-box">
       <h3>Einstellungen</h3>
@@ -109,7 +102,6 @@
       </div>
     </div>
   </div>
-
 </div>
 <script src="app.js"></script>
 </body>
