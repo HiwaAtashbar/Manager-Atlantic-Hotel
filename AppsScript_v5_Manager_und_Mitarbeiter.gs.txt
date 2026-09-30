@@ -1,0 +1,162 @@
+/**
+ * Reinigungsplaner – Zentraler Google-Apps-Script-Webhook (Version 5)
+ * =====================================================================
+ * Dieses EINE Skript bedient die Mitarbeiter-App UND die Manager-App und
+ * speichert alles im Google Drive des Kontos, unter dem es läuft (Manager).
+ *
+ * POST (Body = JSON, Feld "type"):
+ *   roomReport  – Zimmer fertig (Mitarbeiter)  -> Textdatei, CSV, Status, optional E-Mail
+ *   roomStart   – Zimmer begonnen (Mitarbeiter) -> Live-Status "in Arbeit"
+ *   shift       – Kommen/Gehen (Mitarbeiter)   -> Anwesenheit
+ *   assignment  – Zuteilung je Mitarbeiter (Manager)
+ *   dndUpdate   – "Bitte nicht stören"-Zimmer eines Tages (Manager)
+ *   test        – Verbindungstest (sendet optional Test-E-Mail)
+ * GET (?action=...):
+ *   ping | getOverview&date | getSync&date&employeeName | getReports&date | getAssignment&date&employeeName | getDnd&date
+ *
+ * EINRICHTUNG / AKTUALISIERUNG
+ *  1. https://script.google.com -> Projekt öffnen (oder neues Projekt)
+ *  2. Kompletten alten Code löschen, diesen Code einfügen, speichern.
+ *  3. Bereitstellen -> Bereitstellungen verwalten -> Stift -> Version: "Neue Version" -> Bereitstellen
+ *     (Neu: Typ "Web-App", Ausführen als "Ich", Zugriff "Jeder".)
+ *  4. Die URL (endet auf /exec) bleibt gleich und wird in BEIDEN Apps eingetragen.
+ */
+const VERSION = "5";
+const REPORTS_FOLDER_NAME = "Reinigungsplaner-Berichte";
+const ASSIGNMENTS_FOLDER_NAME = "Reinigungsplaner-Zuteilungen";
+const CSV_FILE_NAME = "Alle_Berichte.csv";
+
+function jsonOut(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+function normName(n) { return String(n || "").trim().toLowerCase().replace(/\s+/g, " "); }
+function nameKey(n) { return normName(n).replace(/[^a-z0-9äöüß\u0600-\u06ff]+/g, "_"); }
+function getOrCreateFolder(name) { const it = DriveApp.getFoldersByName(name); return it.hasNext() ? it.next() : DriveApp.createFolder(name); }
+function readJson(folder, name, fallback) {
+  const it = folder.getFilesByName(name); if (!it.hasNext()) return fallback;
+  try { const v = JSON.parse(it.next().getBlob().getDataAsString("UTF-8")); return (v === null || v === undefined) ? fallback : v; } catch (e) { return fallback; }
+}
+function writeJson(folder, name, obj) {
+  const content = JSON.stringify(obj); const it = folder.getFilesByName(name);
+  if (it.hasNext()) it.next().setContent(content); else folder.createFile(name, content, MimeType.PLAIN_TEXT);
+}
+function dayOf(data) { return data.date || new Date().toISOString().slice(0, 10); }
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(25000);
+    const data = JSON.parse(e.postData.contents);
+    const type = data.type || "roomReport";
+    if (type === "assignment") handleAssignment(data);
+    else if (type === "dndUpdate") handleDndUpdate(data);
+    else if (type === "roomStart") handleRoomStart(data);
+    else if (type === "shift") handleShift(data);
+    else if (type === "test") handleTest(data);
+    else handleRoomReport(data);
+    return jsonOut({ status: "ok", version: VERSION });
+  } catch (err) {
+    return jsonOut({ status: "error", message: String(err && err.message || err) });
+  } finally {
+    try { lock.releaseLock(); } catch (x) {}
+  }
+}
+
+function doGet(e) {
+  try {
+    const p = (e && e.parameter) || {}; const action = p.action || "ping";
+    if (action === "ping") return jsonOut({ status: "ok", version: VERSION });
+    if (action === "getOverview") return jsonOut(readOverview(p.date));
+    if (action === "getSync") return jsonOut({ dnd: readDnd(p.date), assignment: readAssignment(p.date, p.employeeName) });
+    if (action === "getReports") return jsonOut(readReports(p.date));
+    if (action === "getAssignment") return jsonOut(readAssignment(p.date, p.employeeName) || { rooms: [] });
+    if (action === "getDnd") return jsonOut(readDnd(p.date));
+    return jsonOut({ status: "error", message: "Unbekannte Aktion" });
+  } catch (err) {
+    return jsonOut({ status: "error", message: String(err && err.message || err) });
+  }
+}
+
+/* ---------- Mitarbeiter -> Skript ---------- */
+function upsertStatus(data, patch) {
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME); const file = "Status_" + dayOf(data) + ".json";
+  const map = readJson(folder, file, {}); const key = String(data.roomNumber);
+  map[key] = Object.assign({}, map[key] || {}, patch); writeJson(folder, file, map);
+}
+function handleRoomStart(data) {
+  upsertStatus(data, { roomNumber: String(data.roomNumber), employeeName: data.employeeName || "", floor: data.floor, status: data.status || "",
+    ww: !!data.ww, isSuite: !!data.isSuite, startTime: data.startTime || data.eventAt || null });
+}
+function handleRoomReport(data) {
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME);
+  folder.createFile(data.fileName || ("Bericht_" + new Date().getTime() + ".txt"), data.reportText || JSON.stringify(data), MimeType.PLAIN_TEXT);
+  appendToCsv(folder, data);
+  appendToDailyJson(folder, data);
+  upsertStatus(data, { roomNumber: String(data.roomNumber), employeeName: data.employeeName || "", floor: data.floor, status: data.status || "",
+    ww: !!data.ww, isSuite: !!data.isSuite, startTime: data.startTime || null, endTime: data.endTime || data.eventAt || new Date().getTime() });
+  sendEmailIfRequested(data);
+}
+function handleShift(data) {
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME); const file = "Shifts_" + dayOf(data) + ".json";
+  const map = readJson(folder, file, {}); const key = nameKey(data.employeeName); const cur = map[key];
+  if (cur && cur.updatedAt && data.updatedAt && cur.updatedAt > data.updatedAt) return;
+  map[key] = { employeeName: data.employeeName || "", kommen: data.kommen || null, gehen: data.gehen || null, updatedAt: data.updatedAt || new Date().getTime() };
+  writeJson(folder, file, map);
+}
+function handleTest(data) {
+  const raw = String(data.recipientEmail || "").trim(); if (!raw) return;
+  raw.split(",").map(a => a.trim()).filter(Boolean).forEach(addr => {
+    try { MailApp.sendEmail(addr, "Reinigungsplaner – Testnachricht", "Die Verbindung von " + (data.employeeName || "Mitarbeiter") + " funktioniert. Berichte werden an diese Adresse gesendet."); } catch (err) {}
+  });
+}
+function appendToCsv(folder, data) {
+  const it = folder.getFilesByName(CSV_FILE_NAME);
+  const row = [data.date || "", data.employeeName || "", data.recipientEmail || "", data.roomNumber || "", data.floor == null ? "" : data.floor, data.status || "",
+    data.ww ? "Ja" : "Nein", data.isSuite ? "Ja" : "Nein",
+    data.startTime ? new Date(data.startTime).toLocaleString("de-DE") : "", data.endTime ? new Date(data.endTime).toLocaleString("de-DE") : "",
+    data.durationMs ? Math.round(data.durationMs / 60000) + " Min" : "", data.wage != null ? Number(data.wage).toFixed(2) + " EUR" : "", new Date().toLocaleString("de-DE")
+  ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(",");
+  if (it.hasNext()) { const f = it.next(); f.setContent(f.getBlob().getDataAsString("UTF-8") + "\n" + row); }
+  else {
+    const header = ["Datum", "Mitarbeiter", "Empfaenger-Email", "Zimmer", "Etage", "Status", "WW", "Suite", "Start", "Ende", "Dauer", "Lohn", "Empfangen am"].map(v => '"' + v + '"').join(",");
+    folder.createFile(CSV_FILE_NAME, header + "\n" + row, MimeType.CSV);
+  }
+}
+function appendToDailyJson(folder, data) {
+  const file = "Reports_" + dayOf(data) + ".json"; const list = readJson(folder, file, []);
+  list.push({ employeeName: data.employeeName || "", roomNumber: data.roomNumber || "", floor: data.floor, status: data.status || "", ww: !!data.ww, isSuite: !!data.isSuite,
+    startTime: data.startTime || null, endTime: data.endTime || null, durationMs: data.durationMs || null, wage: data.wage || 0, receivedAt: new Date().getTime() });
+  writeJson(folder, file, Array.isArray(list) ? list : []);
+}
+function sendEmailIfRequested(data) {
+  const raw = String(data.recipientEmail || "").trim(); if (!raw) return;
+  const subject = "Reinigungsplaner – Zimmer " + (data.roomNumber || "?") + " (" + (data.employeeName || "Mitarbeiter") + ")";
+  raw.split(",").map(a => a.trim()).filter(Boolean).forEach(addr => { try { MailApp.sendEmail(addr, subject, data.reportText || JSON.stringify(data, null, 2)); } catch (err) {} });
+}
+
+/* ---------- Manager -> Skript ---------- */
+function handleAssignment(data) {
+  const folder = getOrCreateFolder(ASSIGNMENTS_FOLDER_NAME);
+  writeJson(folder, "Zuteilung_" + data.date + "_" + nameKey(data.employeeName || "unbekannt") + ".json",
+    { date: data.date, employeeName: data.employeeName || "", employeeEmail: data.employeeEmail || "", rooms: data.rooms || [], createdAt: new Date().getTime() });
+}
+function handleDndUpdate(data) {
+  if (!data.date) return;
+  writeJson(getOrCreateFolder(REPORTS_FOLDER_NAME), "DND_" + data.date + ".json", (Array.isArray(data.roomNumbers) ? data.roomNumbers : []).map(String));
+}
+
+/* ---------- Lesen ---------- */
+function readAssignment(date, employeeName) {
+  if (!date || !employeeName) return null;
+  return readJson(getOrCreateFolder(ASSIGNMENTS_FOLDER_NAME), "Zuteilung_" + date + "_" + nameKey(employeeName) + ".json", null);
+}
+function readDnd(date) { if (!date) return []; const v = readJson(getOrCreateFolder(REPORTS_FOLDER_NAME), "DND_" + date + ".json", []); return Array.isArray(v) ? v : []; }
+function readReports(date) { if (!date) return []; const v = readJson(getOrCreateFolder(REPORTS_FOLDER_NAME), "Reports_" + date + ".json", []); return Array.isArray(v) ? v : []; }
+function readOverview(date) {
+  if (!date) return { status: {}, shifts: [], dnd: [] };
+  const folder = getOrCreateFolder(REPORTS_FOLDER_NAME); const shifts = readJson(folder, "Shifts_" + date + ".json", {});
+  return { status: readJson(folder, "Status_" + date + ".json", {}), shifts: Object.keys(shifts).map(k => shifts[k]), dnd: readDnd(date) };
+}
+
+function testSetup() {
+  Logger.log("Berichte: " + getOrCreateFolder(REPORTS_FOLDER_NAME).getUrl());
+  Logger.log("Zuteilungen: " + getOrCreateFolder(ASSIGNMENTS_FOLDER_NAME).getUrl());
+}

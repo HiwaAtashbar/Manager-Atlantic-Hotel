@@ -1,8 +1,11 @@
 {
   "name": "Reinigungsplaner Manager",
   "short_name": "Manager",
+  "id": "./",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "lang": "de",
   "background_color": "#f4f5f7",
   "theme_color": "#1e3a8a",
   "icons": [

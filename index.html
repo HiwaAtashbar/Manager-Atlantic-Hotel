@@ -6,6 +6,7 @@
 <title>Reinigungsplaner – Manager</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1e3a8a">
+<link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,9 +14,7 @@
 <div id="app">
   <header class="topbar">
     <h1>Manager-Dashboard</h1>
-    <div class="topbar-actions">
-      <button id="btnSettings" class="icon-btn" title="Einstellungen">⚙️</button>
-    </div>
+    <div class="topbar-actions"><button id="btnSettings" class="icon-btn" title="Einstellungen">⚙️</button></div>
   </header>
   <div class="date-nav">
     <button id="btnPrevDay" class="nav-btn">◀</button>
@@ -31,13 +30,14 @@
     <button class="tab-btn" data-tab="report">Bericht</button>
   </nav>
   <div id="toast" class="toast hidden"></div>
+
   <div id="staffModal" class="modal hidden">
     <div class="modal-box">
       <h3 id="staffModalTitle">Mitarbeiter hinzufügen</h3>
-      <label>Name
+      <label>Name – muss genau so in der Mitarbeiter-App stehen
         <input type="text" id="inputStaffName" placeholder="z. B. Sara">
       </label>
-      <label>E-Mail (für Zuteilung, optional)
+      <label>E-Mail (optional)
         <input type="email" id="inputStaffEmail" placeholder="sara@beispiel.de">
       </label>
       <label class="checkbox-label">
@@ -51,14 +51,15 @@
       </div>
     </div>
   </div>
+
   <div id="roomModal" class="modal hidden">
     <div class="modal-box">
       <h3 id="roomModalTitle">Zimmer hinzufügen</h3>
       <label>Zimmernummer
-        <input type="text" id="inputRoomNumber" placeholder="z. B. 101">
+        <input type="text" id="inputRoomNumber" placeholder="z. B. 301">
       </label>
-      <label>Etage
-        <input type="number" id="inputRoomFloor" placeholder="z. B. 1">
+      <label>Etage (leer = automatisch aus der Zimmernummer)
+        <input type="number" id="inputRoomFloor" placeholder="z. B. 3">
       </label>
       <label>Status
         <select id="inputStatus">
@@ -67,18 +68,9 @@
           <option value="yellow">🟡 Bleibt (Aufenthalt)</option>
         </select>
       </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="inputWW">
-        WW – Kompletter Wäschewechsel
-      </label>
-      <label class="checkbox-label">
-        <input type="checkbox" id="inputIsSuite">
-        Doppelzimmer-Suite
-      </label>
-      <label class="checkbox-label dnd-row hidden" id="dndRow">
-        <input type="checkbox" id="inputDnd">
-        🔴 Bitte-nicht-stören-Karte hängt an der Tür
-      </label>
+      <label class="checkbox-label"><input type="checkbox" id="inputWW"> WW – Kompletter Wäschewechsel</label>
+      <label class="checkbox-label"><input type="checkbox" id="inputIsSuite"> Doppelzimmer-Suite (zählt doppelt)</label>
+      <label class="checkbox-label dnd-row hidden" id="dndRow"><input type="checkbox" id="inputDnd"> 🔴 Bitte-nicht-stören-Karte hängt an der Tür</label>
       <div class="modal-actions">
         <button id="btnDeleteRoom" class="btn danger hidden">Löschen</button>
         <button id="btnCancelRoom" class="btn secondary">Abbrechen</button>
@@ -86,15 +78,26 @@
       </div>
     </div>
   </div>
+
+  <div id="bulkModal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Mehrere Zimmer auf einmal</h3>
+      <p class="muted">Pro Zeile ein Zimmer: Nummer, Farbe (blau/rot/gelb oder b/r/g) und optional <b>ww</b>, <b>suite</b>, <b>dnd</b> (nur bei Gelb). Die Etage wird aus der Nummer abgeleitet.</p>
+      <textarea id="inputBulk" rows="10" placeholder="301 blau&#10;302 rot ww&#10;303 gelb dnd&#10;304 gelb suite"></textarea>
+      <div class="modal-actions">
+        <button id="btnBulkCancel" class="btn secondary">Abbrechen</button>
+        <button id="btnBulkSave" class="btn primary">Hinzufügen</button>
+      </div>
+    </div>
+  </div>
+
   <div id="settingsModal" class="modal hidden">
     <div class="modal-box">
       <h3>Einstellungen</h3>
-      <label>Webhook-URL (Ihr eigenes Apps-Script)
+      <label>Webhook-URL (Ihr Apps-Script, Version 5)
         <input type="text" id="inputWebhook" placeholder="https://script.google.com/macros/s/.../exec">
       </label>
-      <div class="modal-actions column">
-        <button id="btnTestWebhook" class="btn secondary full">Verbindung testen</button>
-      </div>
+      <div class="modal-actions column"><button id="btnTestWebhook" class="btn secondary full">Verbindung testen</button></div>
       <div id="webhookStatus" style="font-size:12px;color:var(--muted);margin-top:6px;">Nicht konfiguriert.</div>
       <div class="modal-actions" style="margin-top:16px;">
         <button id="btnCloseSettings" class="btn secondary">Schließen</button>
